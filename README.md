@@ -1,2 +1,2 @@
 # R_BPN
-Backpropagation
+Backpropagation neuralnework implementation in R language
