@@ -1,87 +1,127 @@
-calculate.output.vector <- function(data.matrix,weights.matrix,bias){
+sigmoid <- function(net){
+  1 / (1 + exp(-net))
+}
+
+calculate.output.vector <- function(data.matrix, weights.matrix, bias){
   net <- (data.matrix %*% weights.matrix) - bias
-  return(1 / (1 + exp(-net)))
+  sigmoid(net)
 }
 
-calculate.output.layer.deltas <- function(target.vector,output.layer.output.vector){
-  return(output.layer.output.vector*(1 - output.layer.output.vector)*(target.vector - output.layer.output.vector))
+calculate.output.layer.deltas <- function(target.vector, output.layer.output.vector){
+  output.layer.output.vector * (1 - output.layer.output.vector) * (target.vector - output.layer.output.vector)
 }
 
-
-calculate.hidden.layer.deltas <- function(hidden.layer.output.vector,output.layer.weights.matrix,output.layer.deltas){
-  return(hidden.layer.output.vector*(1 - hidden.layer.output.vector)*(output.layer.deltas %*% t(output.layer.weights.matrix)))
+calculate.hidden.layer.deltas <- function(layer.output.vector, next.layer.weights.matrix, next.layer.deltas){
+  layer.output.vector * (1 - layer.output.vector) * (next.layer.deltas %*% t(next.layer.weights.matrix))
 }
 
-recalling <- function(hidden.layer.weights.matrix,hidden.layer.bias,output.layer.weights.matrix,output.layer.bias,testing.data){
-  testing.result <- c()
-  print(data)
-  for (i in 1:nrow(testing.data)) {
-    data.matrix <- testing.data[i,]
-    hidden.layer.output.vector <- calculate.output.vector(data.matrix,hidden.layer.weights.matrix,hidden.layer.bias)
-    output.layer.output.vector <- calculate.output.vector(hidden.layer.output.vector,output.layer.weights.matrix,output.layer.bias)
-    print(round(output.layer.output.vector))
-    testing.result <- c(testing.result,output.layer.output.vector)
+forward.propagation <- function(input.matrix, weights.list, bias.list){
+  activations <- list(input.matrix)
+  for (i in seq_along(weights.list)) {
+    activations[[i + 1]] <- calculate.output.vector(activations[[i]], weights.list[[i]], bias.list[[i]])
   }
-  
-  testing.data <- cbind(testing.data,matrix(testing.result,ncol = 3,byrow = TRUE))
-  return(testing.data)
+  activations
 }
 
-training <- function(data,training.rate,hidden.nodes){
+recalling <- function(weights.list, bias.list, testing.data){
+  testing.result <- c()
+  output.nodes <- ncol(weights.list[[length(weights.list)]])
+
+  for (i in 1:nrow(testing.data)) {
+    data.matrix <- matrix(testing.data[i, ], nrow = 1)
+    activations <- forward.propagation(data.matrix, weights.list, bias.list)
+    output.layer.output.vector <- activations[[length(activations)]]
+    print(round(output.layer.output.vector))
+    testing.result <- c(testing.result, output.layer.output.vector)
+  }
+
+  cbind(testing.data, matrix(testing.result, ncol = output.nodes, byrow = TRUE))
+}
+
+training <- function(data, training.rate, hidden.nodes){
   output.nodes <- 1
-  hidden.layer.weights.matrix <- matrix(runif((ncol(data) - output.nodes)*hidden.nodes),ncol = hidden.nodes); #matrix(c(0.5,0.3,0.25,0.6,0.1,0.4),ncol = hidden.nodes) 
-  hidden.layer.bias <- matrix(runif(hidden.nodes),nrow = 1)
-  output.layer.weights.matrix <- matrix(runif(hidden.nodes*output.nodes),ncol = output.nodes); #matrix(runif(0.1,0.25,0.5,0.2,0.15,0.05),ncol = output.nodes) m
-  output.layer.bias <- matrix(runif(output.nodes),nrow = 1)
+  input.nodes <- ncol(data) - output.nodes
+
+  if (length(hidden.nodes) == 0) {
+    stop("hidden.nodes 至少要有一層")
+  }
+
+  network.nodes <- c(input.nodes, hidden.nodes, output.nodes)
+  layer.amount <- length(network.nodes) - 1
+
+  weights.list <- lapply(1:layer.amount, function(i) {
+    matrix(runif(network.nodes[i] * network.nodes[i + 1]), nrow = network.nodes[i], ncol = network.nodes[i + 1])
+  })
+  bias.list <- lapply(1:layer.amount, function(i) {
+    matrix(runif(network.nodes[i + 1]), nrow = 1)
+  })
+
   count <- 0
   all.train.error <- c()
+
   repeat {
     count <- count + 1
-    misclassification.amount <- 0
     train.error.sum <- 0
     train.error <- 0
+
     for (i in 1:nrow(data)) {
-      data.matrix <- matrix(data[i,1:(ncol(data) - output.nodes)], nrow = 1)
-      label <- unname(data[i,(ncol(data) - (output.nodes - 1)):ncol(data)])
-      hidden.layer.output.vector <- calculate.output.vector(data.matrix,hidden.layer.weights.matrix,hidden.layer.bias)
-      output.layer.output.vector <- calculate.output.vector(hidden.layer.output.vector,output.layer.weights.matrix,output.layer.bias)
-      train.error <-  ((label - output.layer.output.vector)^2)/2
-      train.error.sum <- train.error.sum + ((label - output.layer.output.vector)^2)/2
-      
-      output.layer.deltas <- calculate.output.layer.deltas(label,output.layer.output.vector)
-      hidden.layer.deltas <- calculate.hidden.layer.deltas(hidden.layer.output.vector,output.layer.weights.matrix,output.layer.deltas)
-      output.layer.weights.deltas <- traing.rate * (t(hidden.layer.output.vector) %*% output.layer.deltas)
-      output.layer.bias.deltas <- -traing.rate*output.layer.deltas
-      hidden.layer.weights.deltas <- traing.rate * (t(data.matrix) %*% hidden.layer.deltas)
-      hidden.layer.bias.deltas <- -traing.rate*hidden.layer.deltas
-      #update output layer
-      output.layer.weights.matrix <- output.layer.weights.matrix + output.layer.weights.deltas
-      output.layer.bias <- output.layer.bias + output.layer.bias.deltas
-      #update hidden layer
-      hidden.layer.weights.matrix <- hidden.layer.weights.matrix + hidden.layer.weights.deltas
-      hidden.layer.bias <- hidden.layer.bias + hidden.layer.bias.deltas
+      data.matrix <- matrix(data[i, 1:input.nodes], nrow = 1)
+      label <- matrix(unname(data[i, (input.nodes + 1):ncol(data)]), nrow = 1)
+
+      activations <- forward.propagation(data.matrix, weights.list, bias.list)
+      output.layer.output.vector <- activations[[length(activations)]]
+
+      train.error <- ((label - output.layer.output.vector)^2) / 2
+      train.error.sum <- train.error.sum + train.error
+
+      deltas <- vector("list", layer.amount)
+      deltas[[layer.amount]] <- calculate.output.layer.deltas(label, output.layer.output.vector)
+
+      if (layer.amount > 1) {
+        for (layer in (layer.amount - 1):1) {
+          deltas[[layer]] <- calculate.hidden.layer.deltas(
+            activations[[layer + 1]],
+            weights.list[[layer + 1]],
+            deltas[[layer + 1]]
+          )
+        }
+      }
+
+      for (layer in 1:layer.amount) {
+        weights.deltas <- training.rate * (t(activations[[layer]]) %*% deltas[[layer]])
+        bias.deltas <- -training.rate * deltas[[layer]]
+
+        weights.list[[layer]] <- weights.list[[layer]] + weights.deltas
+        bias.list[[layer]] <- bias.list[[layer]] + bias.deltas
+      }
     }
-    all.train.error[count] <- train.error.sum/nrow(data)
+
+    all.train.error[count] <- train.error.sum / nrow(data)
     if (train.error < 0.05 || count > 10000) {
       break
     }
   }
-  return(list(hidden.layer.weights.matrix,hidden.layer.bias,output.layer.weights.matrix,output.layer.bias,all.train.error))
+
+  list(weights.list = weights.list, bias.list = bias.list, all.train.error = all.train.error)
 }
 
 ################# XOR #################
-x <- c(0,0,1,1)
-y <- c(0,1,0,1)
-label <- c(0,1,1,0)
-data <- cbind(x,y,label)
-traing.rate <- 0.05
-hidden.nodes <- 4
-training.result <- training(data,traing.rate,hidden.nodes)
-#error function
-subtitle <- sprintf("training rate: %s  hidden nodes: %s",traing.rate,hidden.nodes)
-plot(training.result[[5]],type = "l",main="stop criterion:  training error < 0.05 or interations > 10000",sub = subtitle,xlab = "interations",ylab = "error")
-# <- recalling(traing.result[[1]],traing.result[[2]],traing.result[[3]],traing.result[[4]],cbind(x,y))
+x <- c(0, 0, 1, 1)
+y <- c(0, 1, 0, 1)
+label <- c(0, 1, 1, 0)
+data <- cbind(x, y, label)
+training.rate <- 0.05
+hidden.nodes <- c(4, 3)
+training.result <- training(data, training.rate, hidden.nodes)
+
+# error function
+subtitle <- sprintf("training rate: %s  hidden nodes: %s", training.rate, paste(hidden.nodes, collapse = ","))
+plot(training.result$all.train.error,
+     type = "l",
+     main = "stop criterion: training error < 0.05 or iterations > 10000",
+     sub = subtitle,
+     xlab = "iterations",
+     ylab = "error")
+
+# recalling(training.result$weights.list, training.result$bias.list, cbind(x, y))
 #######################################
-
-
-
